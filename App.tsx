@@ -9,7 +9,7 @@ type ChallengeStep = 'choice' | 'spelling';
 
 interface ChallengeItem {
   word: WordEntry;
-  direction: 'en-ru' | 'ru-en';
+  direction: 'ru-en'; // Fixed to Russian -> English
   options: string[];
 }
 
@@ -76,16 +76,21 @@ const App: React.FC = () => {
       return;
     }
     
+    // Create quest items: All items now fixed to Russian -> English
     const items = words.map(w => {
-      const direction = Math.random() > 0.5 ? 'en-ru' : 'ru-en';
-      const correctAnswer = direction === 'en-ru' ? w.russian : w.english;
+      const correctAnswer = w.english; // Always English for typing
       const otherWords = words.filter(ow => ow.id !== w.id);
       const distractors = otherWords
-        .map(ow => direction === 'en-ru' ? ow.russian : ow.english)
+        .map(ow => ow.english)
         .sort(() => 0.5 - Math.random())
         .slice(0, 3);
       const options = Array.from(new Set([correctAnswer, ...distractors])).sort(() => 0.5 - Math.random());
-      return { word: w, direction, options } as ChallengeItem;
+      
+      return { 
+        word: w, 
+        direction: 'ru-en', 
+        options 
+      } as ChallengeItem;
     }).sort(() => Math.random() - 0.5);
 
     setQuestItems(items);
@@ -177,8 +182,12 @@ const App: React.FC = () => {
           masteryCount: 0
         });
       } catch (err: unknown) { 
-        // Fix for Error in file App.tsx on line 171: ensure error message is converted to string for alert or log
-        console.error(String(err)); 
+        // Fix: Explicitly check for Error instance or convert unknown err to string for logging
+        if (err instanceof Error) {
+          console.error(err.message);
+        } else {
+          console.error(String(err));
+        }
       }
     }
 
@@ -233,7 +242,7 @@ const App: React.FC = () => {
     if (isCorrect !== null) return;
     setSelectedOption(option);
     const current = questItems[currentIdx];
-    const answer = current.direction === 'en-ru' ? current.word.russian : current.word.english;
+    const answer = current.word.english; // Always English in our fixed quest
     
     if (option.toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
@@ -250,7 +259,7 @@ const App: React.FC = () => {
   const handleSpellingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const current = questItems[currentIdx];
-    const answer = current.direction === 'en-ru' ? current.word.russian : current.word.english;
+    const answer = current.word.english; // Always English
     
     if (spellingInput.trim().toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
@@ -300,7 +309,7 @@ const App: React.FC = () => {
 
         <div className="flex justify-center flex-wrap gap-2">
           <button onClick={() => setMode('list')} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'list' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>My Words</button>
-          <button onClick={() => { if(words.length) { setQuestItems(words.map(w => ({ word: w, direction: 'en-ru', options: [] }))); setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>Cards 🃏</button>
+          <button onClick={() => { if(words.length) { setQuestItems(words.map(w => ({ word: w, direction: 'ru-en', options: [] }))); setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>Cards 🃏</button>
           <button onClick={startQuest} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'challenge' ? 'bg-purple-500 text-white shadow-md' : 'bg-white text-purple-400'}`}>Quest 🎯</button>
         </div>
       </header>
@@ -404,8 +413,11 @@ const App: React.FC = () => {
       {mode === 'challenge' && (
         <main className="flex-1 flex flex-col items-center justify-center py-6">
             <div className="w-full max-w-[320px] bg-white rounded-[40px] shadow-xl p-8 text-center mb-6 border-b-8 border-purple-100">
+                <div className="mb-4 text-purple-300 text-xs font-bold uppercase tracking-widest">
+                  Translate to English:
+                </div>
                 <h2 className="text-4xl font-bold text-purple-600 capitalize mb-8">
-                    {questItems[currentIdx]?.direction === 'en-ru' ? questItems[currentIdx]?.word.english : questItems[currentIdx]?.word.russian}
+                    {questItems[currentIdx]?.word.russian}
                 </h2>
                 {challengeStep === 'choice' ? (
                     <div className="grid grid-cols-1 gap-3">
@@ -415,7 +427,7 @@ const App: React.FC = () => {
                     </div>
                 ) : (
                     <form onSubmit={handleSpellingSubmit} className="space-y-4">
-                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600'}`} placeholder="Type it..." autoFocus />
+                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600'}`} placeholder="Type in English..." autoFocus />
                         <button type="submit" className="w-full bg-purple-500 text-white py-4 rounded-2xl text-xl font-bold">Submit!</button>
                     </form>
                 )}
