@@ -50,7 +50,6 @@ const App: React.FC = () => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellingInput, setSpellingInput] = useState('');
   
-  // FIX: Storing shuffled quest items in state to prevent re-shuffling on every render/step change
   const [questItems, setQuestItems] = useState<ChallengeItem[]>([]);
 
   useEffect(() => {
@@ -177,8 +176,8 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           masteryCount: 0
         });
-      } catch (err: any) { 
-        // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+      } catch (err: unknown) { 
+        // Fix for Error in file App.tsx on line 171: ensure error message is converted to string for alert or log
         console.error(String(err)); 
       }
     }
@@ -320,6 +319,42 @@ const App: React.FC = () => {
                </div>
              ))}
            </div>
+           <button onClick={() => setMode('list')} className="w-full text-blue-400 font-bold py-4 underline">Back</button>
+        </main>
+      )}
+
+      {mode === 'bulk_import' && (
+        <main className="flex-1 space-y-4 animate-in zoom-in duration-300">
+          <div className="bg-white p-6 rounded-[32px] shadow-xl border-b-4 border-blue-100">
+            <h3 className="text-xl font-bold text-blue-500 mb-2">Bulk Add Words</h3>
+            <p className="text-xs text-blue-300 mb-4">Paste multiple words. Duplicates will be skipped automatically.</p>
+            <form onSubmit={handleBulkImport}>
+              <textarea
+                value={bulkInputValue}
+                onChange={(e) => setBulkInputValue(e.target.value)}
+                placeholder="apple, banana, orange..."
+                className="w-full h-40 px-4 py-3 rounded-2xl border-2 border-blue-50 focus:border-blue-400 outline-none text-blue-600 font-medium resize-none mb-4"
+                disabled={loading}
+              />
+              <div className="flex gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setMode('list')} 
+                  className="flex-1 py-3 text-blue-400 font-bold"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-[2] bg-blue-500 text-white py-3 rounded-2xl font-bold shadow-md active:scale-95 disabled:opacity-50"
+                  disabled={loading || !bulkInputValue.trim()}
+                >
+                  {loading ? 'Processing...' : 'Import Words'}
+                </button>
+              </div>
+            </form>
+          </div>
         </main>
       )}
 
@@ -338,6 +373,13 @@ const App: React.FC = () => {
               </button>
             </form>
           </section>
+
+          <button 
+            onClick={() => setMode('bulk_import')}
+            className="w-full mb-6 bg-white border-2 border-dashed border-blue-200 text-blue-400 py-3 rounded-2xl font-bold hover:bg-blue-50 transition-colors"
+          >
+            + Add Many Words at Once
+          </button>
 
           <main className="flex-1 space-y-4">
             {words.length === 0 ? <p className="text-center py-20 text-blue-300 font-bold">List is empty! 🚀</p> : words.map(w => <WordCard key={w.id} entry={w} onDelete={deleteWord} />)}
