@@ -4,7 +4,8 @@ import { TranslationResult } from "../types";
 import { commonWords } from "./fallbackDictionary";
 
 // Initialize the Gemini API client using the recommended approach
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Tier 2: Free Public API (MyMemory)
 async function translateViaPublicApi(word: string): Promise<string | null> {

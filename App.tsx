@@ -49,6 +49,9 @@ const App: React.FC = () => {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spellingInput, setSpellingInput] = useState('');
+  
+  // FIX: Storing shuffled quest items in state to prevent re-shuffling on every render/step change
+  const [questItems, setQuestItems] = useState<ChallengeItem[]>([]);
 
   useEffect(() => {
     localStorage.setItem('magic_dict_all_lists', JSON.stringify(allLists));
@@ -68,15 +71,40 @@ const App: React.FC = () => {
 
   const words = activeList?.words || [];
 
+  const startQuest = useCallback(() => {
+    if (words.length < 1) {
+      alert("Add words first!");
+      return;
+    }
+    
+    const items = words.map(w => {
+      const direction = Math.random() > 0.5 ? 'en-ru' : 'ru-en';
+      const correctAnswer = direction === 'en-ru' ? w.russian : w.english;
+      const otherWords = words.filter(ow => ow.id !== w.id);
+      const distractors = otherWords
+        .map(ow => direction === 'en-ru' ? ow.russian : ow.english)
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 3);
+      const options = Array.from(new Set([correctAnswer, ...distractors])).sort(() => 0.5 - Math.random());
+      return { word: w, direction, options } as ChallengeItem;
+    }).sort(() => Math.random() - 0.5);
+
+    setQuestItems(items);
+    setCurrentIdx(0);
+    setChallengeStep('choice');
+    setIsCorrect(null);
+    setSelectedOption(null);
+    setSpellingInput('');
+    setMode('challenge');
+  }, [words]);
+
   const updateProgress = useCallback((isCorrectAnswer: boolean) => {
     if (!isCorrectAnswer) return;
 
     const today = new Date().toDateString();
     setProgress(prev => {
       let newStreak = prev.streak;
-      if (prev.lastDate === today) {
-        // Already active today
-      } else {
+      if (prev.lastDate !== today) {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         newStreak = prev.lastDate === yesterday.toDateString() ? prev.streak + 1 : 1;
@@ -94,7 +122,6 @@ const App: React.FC = () => {
     const word = inputValue.trim().toLowerCase();
     if (!word) return;
 
-    // Duplicate Check
     if (words.some(w => w.english.toLowerCase() === word)) {
       alert(`"${word}" is already in your list!`);
       setInputValue('');
@@ -113,9 +140,7 @@ const App: React.FC = () => {
     };
 
     setAllLists(prev => prev.map(list => 
-      list.id === activeListId 
-        ? { ...list, words: [newEntry, ...list.words] } 
-        : list
+      list.id === activeListId ? { ...list, words: [newEntry, ...list.words] } : list
     ));
     setInputValue('');
     setLoading(false);
@@ -126,12 +151,10 @@ const App: React.FC = () => {
     if (!bulkInputValue.trim()) return;
 
     setLoading(true);
-    // Split by comma or newline and filter out empty strings and duplicates within the input
     const inputWords = Array.from(new Set(
       bulkInputValue.split(/[\n,]+/).map(w => w.trim().toLowerCase()).filter(w => w.length > 0)
     ));
     
-    // Filter out words that are already in the current active list
     const wordsToImport = inputWords.filter(word => 
       !words.some(existing => existing.english.toLowerCase() === word)
     );
@@ -144,7 +167,6 @@ const App: React.FC = () => {
     }
     
     const newEntries: WordEntry[] = [];
-    
     for (const word of wordsToImport) {
       try {
         const result = await translateWord(word);
@@ -155,15 +177,14 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           masteryCount: 0
         });
-      } catch (err) {
-        console.error(`Failed to import: ${word}`, err);
+      } catch (err: any) { 
+        // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+        console.error(String(err)); 
       }
     }
 
     setAllLists(prev => prev.map(list => 
-      list.id === activeListId 
-        ? { ...list, words: [...newEntries, ...list.words] } 
-        : list
+      list.id === activeListId ? { ...list, words: [...newEntries, ...list.words] } : list
     ));
     setBulkInputValue('');
     setMode('list');
@@ -172,15 +193,12 @@ const App: React.FC = () => {
 
   const deleteWord = useCallback((id: string) => {
     setAllLists(prev => prev.map(list => 
-      list.id === activeListId 
-        ? { ...list, words: list.words.filter(w => w.id !== id) } 
-        : list
+      list.id === activeListId ? { ...list, words: list.words.filter(w => w.id !== id) } : list
     ));
   }, [activeListId]);
 
-  // FIX: Casting prompt return to string to avoid 'unknown' type error on trim()
   const createNewList = () => {
-    const nameInput = window.prompt("Enter new list name:") as string | null;
+    const nameInput = window.prompt("Enter new list name:");
     if (nameInput && nameInput.trim()) {
       const newListId = Date.now().toString();
       const newList: WordList = { id: newListId, name: nameInput.trim(), words: [] };
@@ -199,45 +217,30 @@ const App: React.FC = () => {
     }
   };
 
-  const shuffledData = useMemo(() => {
-    if (words.length === 0) return [];
-    return words.map(w => {
-      const direction = Math.random() > 0.5 ? 'en-ru' : 'ru-en';
-      const correctAnswer = direction === 'en-ru' ? w.russian : w.english;
-      const otherWords = words.filter(ow => ow.id !== w.id);
-      const distractors = otherWords
-        .map(ow => direction === 'en-ru' ? ow.russian : ow.english)
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 3);
-      const options = Array.from(new Set([correctAnswer, ...distractors])).sort(() => 0.5 - Math.random());
-      return { word: w, direction, options } as ChallengeItem;
-    }).sort(() => Math.random() - 0.5);
-  }, [mode, words, activeListId]);
-
   const nextItem = () => {
     setShowAnswer(false);
     setIsCorrect(null);
     setSelectedOption(null);
     setSpellingInput('');
     if (challengeStep === 'spelling' || mode === 'train') {
-        setChallengeStep('choice');
-        setCurrentIdx((prev) => (prev + 1) % words.length);
+      setChallengeStep('choice');
+      setCurrentIdx((prev) => (prev + 1) % questItems.length);
     } else {
-        setChallengeStep('spelling');
+      setChallengeStep('spelling');
     }
   };
 
   const handleOptionClick = (option: string) => {
     if (isCorrect !== null) return;
     setSelectedOption(option);
-    const current = shuffledData[currentIdx] as ChallengeItem;
+    const current = questItems[currentIdx];
     const answer = current.direction === 'en-ru' ? current.word.russian : current.word.english;
     
     if (option.toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
       setTimeout(() => {
-          setIsCorrect(null);
-          setChallengeStep('spelling');
+        setIsCorrect(null);
+        setChallengeStep('spelling');
       }, 800);
     } else {
       setIsCorrect(false);
@@ -247,20 +250,20 @@ const App: React.FC = () => {
 
   const handleSpellingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const current = shuffledData[currentIdx] as ChallengeItem;
+    const current = questItems[currentIdx];
     const answer = current.direction === 'en-ru' ? current.word.russian : current.word.english;
     
     if (spellingInput.trim().toLowerCase() === answer.toLowerCase()) {
-        setIsCorrect(true);
-        updateProgress(true);
-        setAllLists(prev => prev.map(l => ({
-          ...l,
-          words: l.words.map(w => w.id === current.word.id ? { ...w, masteryCount: (w.masteryCount || 0) + 1 } : w)
-        })));
-        setTimeout(nextItem, 1000);
+      setIsCorrect(true);
+      updateProgress(true);
+      setAllLists(prev => prev.map(l => ({
+        ...l,
+        words: l.words.map(w => w.id === current.word.id ? { ...w, masteryCount: (w.masteryCount || 0) + 1 } : w)
+      })));
+      setTimeout(nextItem, 1000);
     } else {
-        setIsCorrect(false);
-        setTimeout(() => setIsCorrect(null), 1000);
+      setIsCorrect(false);
+      setTimeout(() => setIsCorrect(null), 1000);
     }
   };
 
@@ -298,14 +301,14 @@ const App: React.FC = () => {
 
         <div className="flex justify-center flex-wrap gap-2">
           <button onClick={() => setMode('list')} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'list' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>My Words</button>
-          <button onClick={() => { if(words.length) { setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>Cards 🃏</button>
-          <button onClick={() => { if(words.length) { setMode('challenge'); setCurrentIdx(0); setChallengeStep('choice'); setIsCorrect(null); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'challenge' ? 'bg-purple-500 text-white shadow-md' : 'bg-white text-purple-400'}`}>Quest 🎯</button>
+          <button onClick={() => { if(words.length) { setQuestItems(words.map(w => ({ word: w, direction: 'en-ru', options: [] }))); setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>Cards 🃏</button>
+          <button onClick={startQuest} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'challenge' ? 'bg-purple-500 text-white shadow-md' : 'bg-white text-purple-400'}`}>Quest 🎯</button>
         </div>
       </header>
 
       {mode === 'lists_mgmt' && (
-        <main className="flex-1 space-y-4 animate-in fade-in">
-           <button onClick={createNewList} className="w-full bg-green-500 text-white font-bold py-4 rounded-2xl shadow-lg transform active:scale-95 transition-transform">+ New Collection</button>
+        <main className="flex-1 space-y-4">
+           <button onClick={createNewList} className="w-full bg-green-500 text-white font-bold py-4 rounded-2xl shadow-lg">+ New Collection</button>
            <div className="space-y-3">
              {allLists.map(list => (
                <div key={list.id} className={`bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border-2 ${activeListId === list.id ? 'border-blue-300' : 'border-transparent'}`}>
@@ -317,42 +320,6 @@ const App: React.FC = () => {
                </div>
              ))}
            </div>
-           <button onClick={() => setMode('list')} className="w-full text-blue-400 font-bold py-4 underline">Back</button>
-        </main>
-      )}
-
-      {mode === 'bulk_import' && (
-        <main className="flex-1 space-y-4 animate-in zoom-in duration-300">
-          <div className="bg-white p-6 rounded-[32px] shadow-xl border-b-4 border-blue-100">
-            <h3 className="text-xl font-bold text-blue-500 mb-2">Bulk Add Words</h3>
-            <p className="text-xs text-blue-300 mb-4">Paste multiple words. Duplicates will be skipped automatically.</p>
-            <form onSubmit={handleBulkImport}>
-              <textarea
-                value={bulkInputValue}
-                onChange={(e) => setBulkInputValue(e.target.value)}
-                placeholder="apple, banana, orange..."
-                className="w-full h-40 px-4 py-3 rounded-2xl border-2 border-blue-50 focus:border-blue-400 outline-none text-blue-600 font-medium resize-none mb-4"
-                disabled={loading}
-              />
-              <div className="flex gap-2">
-                <button 
-                  type="button" 
-                  onClick={() => setMode('list')} 
-                  className="flex-1 py-3 text-blue-400 font-bold"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-[2] bg-blue-500 text-white py-3 rounded-2xl font-bold shadow-md active:scale-95 disabled:opacity-50"
-                  disabled={loading || !bulkInputValue.trim()}
-                >
-                  {loading ? 'Processing...' : 'Import Words'}
-                </button>
-              </div>
-            </form>
-          </div>
         </main>
       )}
 
@@ -366,18 +333,11 @@ const App: React.FC = () => {
           <section className="sticky top-4 z-10 bg-blue-500 p-4 rounded-3xl shadow-xl border-2 border-blue-400 mb-6">
             <form onSubmit={handleTranslate} className="flex gap-2">
               <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type a word..." className="flex-1 px-5 py-4 rounded-2xl border-none outline-none text-lg text-white bg-blue-600 placeholder-blue-300 font-medium" disabled={loading} />
-              <button type="submit" disabled={loading || !inputValue.trim()} className="bg-yellow-400 text-white font-bold p-4 rounded-2xl shadow-md active:scale-95">
+              <button type="submit" disabled={loading || !inputValue.trim()} className="bg-yellow-400 text-white font-bold p-4 rounded-2xl">
                 {loading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'GO'}
               </button>
             </form>
           </section>
-
-          <button 
-            onClick={() => setMode('bulk_import')}
-            className="w-full mb-6 bg-white border-2 border-dashed border-blue-200 text-blue-400 py-3 rounded-2xl font-bold hover:bg-blue-50 transition-colors"
-          >
-            + Add Many Words at Once
-          </button>
 
           <main className="flex-1 space-y-4">
             {words.length === 0 ? <p className="text-center py-20 text-blue-300 font-bold">List is empty! 🚀</p> : words.map(w => <WordCard key={w.id} entry={w} onDelete={deleteWord} />)}
@@ -386,55 +346,43 @@ const App: React.FC = () => {
       )}
 
       {mode === 'train' && (
-        <main className="flex-1 flex flex-col items-center justify-center py-10">
-            <div onClick={() => setShowAnswer(!showAnswer)} className="w-full aspect-square max-w-[280px] bg-white rounded-[40px] shadow-2xl flex flex-col items-center justify-center cursor-pointer p-8 text-center border-b-8 border-blue-100 transition-all active:scale-95">
+        <main className="flex-1 flex flex-col items-center justify-center">
+            <div onClick={() => setShowAnswer(!showAnswer)} className="w-full aspect-square max-w-[280px] bg-white rounded-[40px] shadow-2xl flex flex-col items-center justify-center cursor-pointer p-8 text-center border-b-8 border-blue-100">
                 <span className="text-blue-300 font-bold uppercase text-xs mb-4">{showAnswer ? "Russian" : "English"}</span>
-                <h2 className="text-4xl font-bold text-blue-600 capitalize">{showAnswer ? (shuffledData[currentIdx] as any)?.word?.russian : (shuffledData[currentIdx] as any)?.word?.english}</h2>
+                <h2 className="text-4xl font-bold text-blue-600 capitalize">{showAnswer ? questItems[currentIdx]?.word.russian : questItems[currentIdx]?.word.english}</h2>
                 {!showAnswer && <p className="text-blue-200 mt-6 animate-pulse text-sm">Tap to flip</p>}
             </div>
             <div className="mt-12 flex flex-col items-center gap-4 w-full px-8">
-                <button onClick={nextItem} className="w-full bg-yellow-400 text-white py-5 rounded-3xl text-2xl font-bold shadow-lg active:scale-95">Next ➔</button>
-                <p className="text-blue-300 font-bold">{currentIdx + 1} / {words.length}</p>
+                <button onClick={nextItem} className="w-full bg-yellow-400 text-white py-5 rounded-3xl text-2xl font-bold">Next ➔</button>
+                <p className="text-blue-300 font-bold">{currentIdx + 1} / {questItems.length}</p>
             </div>
         </main>
       )}
 
       {mode === 'challenge' && (
         <main className="flex-1 flex flex-col items-center justify-center py-6">
-            <div className="w-full max-w-[320px] bg-white rounded-[40px] shadow-xl p-8 text-center mb-6 border-b-8 border-purple-100 animate-in zoom-in duration-300">
-                <div className="flex justify-between items-center mb-4">
-                    <span className="text-purple-300 font-bold text-xs uppercase tracking-widest">Step {challengeStep === 'choice' ? '1/2' : '2/2'}</span>
-                    <div className="flex gap-1">
-                       {[1,2,3].map(i => (
-                         <div key={i} className={`w-2 h-2 rounded-full ${(shuffledData[currentIdx]?.word.masteryCount || 0) >= i ? 'bg-yellow-400' : 'bg-purple-50'}`}></div>
-                       ))}
-                    </div>
-                </div>
+            <div className="w-full max-w-[320px] bg-white rounded-[40px] shadow-xl p-8 text-center mb-6 border-b-8 border-purple-100">
                 <h2 className="text-4xl font-bold text-purple-600 capitalize mb-8">
-                    {shuffledData[currentIdx]?.direction === 'en-ru' ? shuffledData[currentIdx]?.word.english : shuffledData[currentIdx]?.word.russian}
+                    {questItems[currentIdx]?.direction === 'en-ru' ? questItems[currentIdx]?.word.english : questItems[currentIdx]?.word.russian}
                 </h2>
                 {challengeStep === 'choice' ? (
                     <div className="grid grid-cols-1 gap-3">
-                        {shuffledData[currentIdx]?.options.map((option, i) => (
-                            <button key={i} onClick={() => handleOptionClick(option)} className={`w-full py-4 px-4 rounded-2xl text-lg font-bold border-4 transition-all ${selectedOption === option ? (isCorrect ? 'border-green-400 bg-green-50 text-green-600' : 'border-red-400 bg-red-50 text-red-600 animate-shake') : 'border-purple-50 bg-purple-50 text-purple-600 hover:bg-purple-100'}`}>{option}</button>
+                        {questItems[currentIdx]?.options.map((option, i) => (
+                            <button key={i} onClick={() => handleOptionClick(option)} className={`w-full py-4 px-4 rounded-2xl text-lg font-bold border-4 transition-all ${selectedOption === option ? (isCorrect ? 'border-green-400 bg-green-50 text-green-600' : 'border-red-400 bg-red-50 text-red-600 animate-shake') : 'border-purple-50 bg-purple-50 text-purple-600'}`}>{option}</button>
                         ))}
                     </div>
                 ) : (
                     <form onSubmit={handleSpellingSubmit} className="space-y-4">
-                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600'}`} placeholder="Type word..." autoFocus />
-                        <button type="submit" className="w-full bg-purple-500 text-white py-4 rounded-2xl text-xl font-bold shadow-md hover:bg-purple-600 active:scale-95 transition-all">Submit! ✍️</button>
+                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600'}`} placeholder="Type it..." autoFocus />
+                        <button type="submit" className="w-full bg-purple-500 text-white py-4 rounded-2xl text-xl font-bold">Submit!</button>
                     </form>
                 )}
             </div>
-            <div className="flex gap-4">
-                <button onClick={() => setMode('list')} className="text-purple-300 font-bold underline text-sm">Stop</button>
-                <button onClick={nextItem} className="text-purple-300 font-bold underline text-sm">Skip word</button>
-            </div>
-            <p className="mt-4 text-purple-200 font-bold">{currentIdx + 1} / {words.length}</p>
+            <button onClick={() => setMode('list')} className="text-purple-300 font-bold underline">Stop Quest</button>
+            <p className="mt-4 text-purple-200 font-bold">{currentIdx + 1} / {questItems.length}</p>
             <style>{`.animate-shake { animation: shake 0.2s ease-in-out 0s 2; } @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }`}</style>
         </main>
       )}
-      <footer className="mt-8 text-center text-xs text-blue-200 uppercase tracking-widest font-bold opacity-30">Magic Dictionary 2.0</footer>
     </div>
   );
 };
