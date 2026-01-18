@@ -1,0 +1,7 @@
+{
+  "name": "Magic Dictionary",
+  "description": "A kid-friendly English-Russian dictionary MVP inspired by Skyeng, designed for 8-year-olds with a simple and colorful interface.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
