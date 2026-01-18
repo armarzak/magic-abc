@@ -9,7 +9,7 @@ type ChallengeStep = 'choice' | 'spelling';
 
 interface ChallengeItem {
   word: WordEntry;
-  direction: 'ru-en'; // Fixed to Russian -> English
+  direction: 'ru-en';
   options: string[];
 }
 
@@ -27,8 +27,7 @@ const App: React.FC = () => {
   });
 
   const [activeListId, setActiveListId] = useState<string>(() => {
-    const savedId = localStorage.getItem('magic_dict_active_list_id');
-    return savedId || 'default';
+    return localStorage.getItem('magic_dict_active_list_id') || 'default';
   });
 
   const [progress, setProgress] = useState<UserProgress>(() => {
@@ -76,9 +75,8 @@ const App: React.FC = () => {
       return;
     }
     
-    // Create quest items: All items now fixed to Russian -> English
     const items = words.map(w => {
-      const correctAnswer = w.english; // Always English for typing
+      const correctAnswer = w.english;
       const otherWords = words.filter(ow => ow.id !== w.id);
       const distractors = otherWords
         .map(ow => ow.english)
@@ -111,7 +109,8 @@ const App: React.FC = () => {
       if (prev.lastDate !== today) {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        newStreak = prev.lastDate === yesterday.toDateString() ? prev.streak + 1 : 1;
+        const yesterdayStr = yesterday.toDateString();
+        newStreak = prev.lastDate === yesterdayStr ? prev.streak + 1 : 1;
       }
       return {
         streak: newStreak,
@@ -133,21 +132,27 @@ const App: React.FC = () => {
     }
 
     setLoading(true);
-    const result = await translateWord(word);
-    
-    const newEntry: WordEntry = {
-      id: Date.now().toString(),
-      english: result.english.toLowerCase(),
-      russian: result.russian.toLowerCase(),
-      timestamp: Date.now(),
-      masteryCount: 0
-    };
+    try {
+      const result = await translateWord(word);
+      const newEntry: WordEntry = {
+        id: Date.now().toString(),
+        english: result.english.toLowerCase(),
+        russian: result.russian.toLowerCase(),
+        timestamp: Date.now(),
+        masteryCount: 0
+      };
 
-    setAllLists(prev => prev.map(list => 
-      list.id === activeListId ? { ...list, words: [newEntry, ...list.words] } : list
-    ));
-    setInputValue('');
-    setLoading(false);
+      setAllLists(prev => prev.map(list => 
+        list.id === activeListId ? { ...list, words: [newEntry, ...list.words] } : list
+      ));
+      setInputValue('');
+    } catch (err) {
+      console.error(err);
+      // Fix: cast unknown error to string for alert
+      alert("Something went wrong with translation: " + String(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleBulkImport = async (e: React.FormEvent) => {
@@ -181,13 +186,8 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           masteryCount: 0
         });
-      } catch (err: unknown) { 
-        // Fix: Explicitly check for Error instance or convert unknown err to string for logging
-        if (err instanceof Error) {
-          console.error(err.message);
-        } else {
-          console.error(String(err));
-        }
+      } catch (err) { 
+        console.error(String(err)); 
       }
     }
 
@@ -242,7 +242,7 @@ const App: React.FC = () => {
     if (isCorrect !== null) return;
     setSelectedOption(option);
     const current = questItems[currentIdx];
-    const answer = current.word.english; // Always English in our fixed quest
+    const answer = current.word.english;
     
     if (option.toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
@@ -259,7 +259,7 @@ const App: React.FC = () => {
   const handleSpellingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const current = questItems[currentIdx];
-    const answer = current.word.english; // Always English
+    const answer = current.word.english;
     
     if (spellingInput.trim().toLowerCase() === answer.toLowerCase()) {
       setIsCorrect(true);
@@ -297,34 +297,34 @@ const App: React.FC = () => {
             <select 
               value={activeListId} 
               onChange={(e) => { setActiveListId(e.target.value); setMode('list'); }}
-              className="w-full bg-white border-2 border-blue-100 rounded-xl px-3 py-2 text-blue-600 font-bold outline-none appearance-none shadow-sm"
+              className="w-full bg-white border-2 border-blue-100 rounded-xl px-3 py-2 text-blue-600 font-bold outline-none appearance-none shadow-sm cursor-pointer"
             >
               {allLists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.words.length})</option>)}
             </select>
           </div>
-          <button onClick={() => setMode('lists_mgmt')} className={`p-2 rounded-xl border-2 ${mode === 'lists_mgmt' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-400 border-blue-100'}`}>
+          <button onClick={() => setMode('lists_mgmt')} className={`p-2 rounded-xl border-2 transition-colors ${mode === 'lists_mgmt' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-400 border-blue-100'}`}>
              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
           </button>
         </div>
 
         <div className="flex justify-center flex-wrap gap-2">
-          <button onClick={() => setMode('list')} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'list' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>My Words</button>
-          <button onClick={() => { if(words.length) { setQuestItems(words.map(w => ({ word: w, direction: 'ru-en', options: [] }))); setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400'}`}>Cards 🃏</button>
-          <button onClick={startQuest} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'challenge' ? 'bg-purple-500 text-white shadow-md' : 'bg-white text-purple-400'}`}>Quest 🎯</button>
+          <button onClick={() => setMode('list')} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'list' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400 hover:bg-blue-50'}`}>My Words</button>
+          <button onClick={() => { if(words.length) { setQuestItems(words.map(w => ({ word: w, direction: 'ru-en', options: [] }))); setMode('train'); setCurrentIdx(0); } else alert("Add words first!"); }} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'train' ? 'bg-blue-500 text-white shadow-md' : 'bg-white text-blue-400 hover:bg-blue-50'}`}>Cards 🃏</button>
+          <button onClick={startQuest} className={`px-4 py-2 rounded-full font-bold transition-all text-sm ${mode === 'challenge' ? 'bg-purple-500 text-white shadow-md' : 'bg-white text-purple-400 hover:bg-purple-50'}`}>Quest 🎯</button>
         </div>
       </header>
 
       {mode === 'lists_mgmt' && (
-        <main className="flex-1 space-y-4">
-           <button onClick={createNewList} className="w-full bg-green-500 text-white font-bold py-4 rounded-2xl shadow-lg">+ New Collection</button>
+        <main className="flex-1 space-y-4 animate-in fade-in duration-300">
+           <button onClick={createNewList} className="w-full bg-green-500 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">+ New Collection</button>
            <div className="space-y-3">
              {allLists.map(list => (
-               <div key={list.id} className={`bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border-2 ${activeListId === list.id ? 'border-blue-300' : 'border-transparent'}`}>
+               <div key={list.id} className={`bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border-2 transition-all ${activeListId === list.id ? 'border-blue-300 ring-2 ring-blue-100' : 'border-transparent'}`}>
                  <div className="flex flex-col flex-1 cursor-pointer" onClick={() => { setActiveListId(list.id); setMode('list'); }}>
                     <span className="font-bold text-blue-600">{list.name}</span>
                     <span className="text-xs text-blue-300">{list.words.length} words</span>
                  </div>
-                 <button onClick={() => deleteList(list.id)} className="text-red-300 p-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                 <button onClick={() => deleteList(list.id)} className="text-red-300 hover:text-red-500 p-2 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                </div>
              ))}
            </div>
@@ -356,7 +356,7 @@ const App: React.FC = () => {
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-[2] bg-blue-500 text-white py-3 rounded-2xl font-bold shadow-md active:scale-95 disabled:opacity-50"
+                  className="flex-[2] bg-blue-500 text-white py-3 rounded-2xl font-bold shadow-md active:scale-95 transition-transform disabled:opacity-50"
                   disabled={loading || !bulkInputValue.trim()}
                 >
                   {loading ? 'Processing...' : 'Import Words'}
@@ -368,7 +368,7 @@ const App: React.FC = () => {
       )}
 
       {mode === 'list' && (
-        <>
+        <div className="animate-in fade-in duration-500">
           <div className="mb-4 bg-white p-4 rounded-2xl shadow-sm border-b-4 border-blue-50 flex items-center justify-between">
              <div className="text-blue-500 font-bold">Progress</div>
              <div className="text-blue-400 font-bold">{masteredCount} / {words.length} ⭐</div>
@@ -377,7 +377,7 @@ const App: React.FC = () => {
           <section className="sticky top-4 z-10 bg-blue-500 p-4 rounded-3xl shadow-xl border-2 border-blue-400 mb-6">
             <form onSubmit={handleTranslate} className="flex gap-2">
               <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type a word..." className="flex-1 px-5 py-4 rounded-2xl border-none outline-none text-lg text-white bg-blue-600 placeholder-blue-300 font-medium" disabled={loading} />
-              <button type="submit" disabled={loading || !inputValue.trim()} className="bg-yellow-400 text-white font-bold p-4 rounded-2xl">
+              <button type="submit" disabled={loading || !inputValue.trim()} className="bg-yellow-400 text-white font-bold p-4 rounded-2xl shadow-md active:scale-90 transition-transform">
                 {loading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'GO'}
               </button>
             </form>
@@ -393,25 +393,25 @@ const App: React.FC = () => {
           <main className="flex-1 space-y-4">
             {words.length === 0 ? <p className="text-center py-20 text-blue-300 font-bold">List is empty! 🚀</p> : words.map(w => <WordCard key={w.id} entry={w} onDelete={deleteWord} />)}
           </main>
-        </>
+        </div>
       )}
 
       {mode === 'train' && (
-        <main className="flex-1 flex flex-col items-center justify-center">
-            <div onClick={() => setShowAnswer(!showAnswer)} className="w-full aspect-square max-w-[280px] bg-white rounded-[40px] shadow-2xl flex flex-col items-center justify-center cursor-pointer p-8 text-center border-b-8 border-blue-100">
+        <main className="flex-1 flex flex-col items-center justify-center animate-in zoom-in duration-300">
+            <div onClick={() => setShowAnswer(!showAnswer)} className="w-full aspect-square max-w-[280px] bg-white rounded-[40px] shadow-2xl flex flex-col items-center justify-center cursor-pointer p-8 text-center border-b-8 border-blue-100 active:scale-95 transition-transform">
                 <span className="text-blue-300 font-bold uppercase text-xs mb-4">{showAnswer ? "Russian" : "English"}</span>
                 <h2 className="text-4xl font-bold text-blue-600 capitalize">{showAnswer ? questItems[currentIdx]?.word.russian : questItems[currentIdx]?.word.english}</h2>
                 {!showAnswer && <p className="text-blue-200 mt-6 animate-pulse text-sm">Tap to flip</p>}
             </div>
             <div className="mt-12 flex flex-col items-center gap-4 w-full px-8">
-                <button onClick={nextItem} className="w-full bg-yellow-400 text-white py-5 rounded-3xl text-2xl font-bold">Next ➔</button>
+                <button onClick={nextItem} className="w-full bg-yellow-400 text-white py-5 rounded-3xl text-2xl font-bold shadow-lg active:scale-95 transition-transform">Next ➔</button>
                 <p className="text-blue-300 font-bold">{currentIdx + 1} / {questItems.length}</p>
             </div>
         </main>
       )}
 
       {mode === 'challenge' && (
-        <main className="flex-1 flex flex-col items-center justify-center py-6">
+        <main className="flex-1 flex flex-col items-center justify-center py-6 animate-in slide-in-from-right duration-300">
             <div className="w-full max-w-[320px] bg-white rounded-[40px] shadow-xl p-8 text-center mb-6 border-b-8 border-purple-100">
                 <div className="mb-4 text-purple-300 text-xs font-bold uppercase tracking-widest">
                   Translate to English:
@@ -422,17 +422,17 @@ const App: React.FC = () => {
                 {challengeStep === 'choice' ? (
                     <div className="grid grid-cols-1 gap-3">
                         {questItems[currentIdx]?.options.map((option, i) => (
-                            <button key={i} onClick={() => handleOptionClick(option)} className={`w-full py-4 px-4 rounded-2xl text-lg font-bold border-4 transition-all ${selectedOption === option ? (isCorrect ? 'border-green-400 bg-green-50 text-green-600' : 'border-red-400 bg-red-50 text-red-600 animate-shake') : 'border-purple-50 bg-purple-50 text-purple-600'}`}>{option}</button>
+                            <button key={i} onClick={() => handleOptionClick(option)} className={`w-full py-4 px-4 rounded-2xl text-lg font-bold border-4 transition-all ${selectedOption === option ? (isCorrect ? 'border-green-400 bg-green-50 text-green-600' : 'border-red-400 bg-red-50 text-red-600 animate-shake') : 'border-purple-50 bg-purple-50 text-purple-600 hover:border-purple-200'}`}>{option}</button>
                         ))}
                     </div>
                 ) : (
                     <form onSubmit={handleSpellingSubmit} className="space-y-4">
-                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600'}`} placeholder="Type in English..." autoFocus />
-                        <button type="submit" className="w-full bg-purple-500 text-white py-4 rounded-2xl text-xl font-bold">Submit!</button>
+                        <input type="text" value={spellingInput} onChange={(e) => { setSpellingInput(e.target.value); setIsCorrect(null); }} className={`w-full px-4 py-5 rounded-2xl text-center text-2xl font-bold border-4 outline-none transition-all ${isCorrect === true ? 'border-green-400 bg-green-50 text-green-600' : isCorrect === false ? 'border-red-400 bg-red-50 text-red-600 animate-shake' : 'border-purple-100 bg-purple-50 text-purple-600 focus:border-purple-400'}`} placeholder="Type in English..." autoFocus />
+                        <button type="submit" className="w-full bg-purple-500 text-white py-4 rounded-2xl text-xl font-bold shadow-md active:scale-95 transition-transform">Submit!</button>
                     </form>
                 )}
             </div>
-            <button onClick={() => setMode('list')} className="text-purple-300 font-bold underline">Stop Quest</button>
+            <button onClick={() => setMode('list')} className="text-purple-300 font-bold underline hover:text-purple-500">Stop Quest</button>
             <p className="mt-4 text-purple-200 font-bold">{currentIdx + 1} / {questItems.length}</p>
             <style>{`.animate-shake { animation: shake 0.2s ease-in-out 0s 2; } @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }`}</style>
         </main>
